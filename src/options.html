@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Teams Keyword Alerts</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <img src="../icons/icon-128.png" alt="" width="36" height="36">
+        <div>
+          <h1>Teams Keyword Alerts</h1>
+          <p>Surveille les sous-titres Teams.</p>
+        </div>
+      </header>
+
+      <form id="settings-form">
+        <label class="toggle-row">
+          <span>
+            <strong>Alertes</strong>
+            <small>Notifications navigateur</small>
+          </span>
+          <input id="enabled" type="checkbox">
+        </label>
+
+        <div id="captions-warning" class="captions-warning" hidden>
+          <strong>Sous-titres inactifs</strong>
+          <span>Active les sous-titres Teams pour recevoir les alertes.</span>
+        </div>
+
+        <label>
+          <span class="section-title">
+            <strong>Mots-cles</strong>
+            <small id="keyword-count">0</small>
+          </span>
+          <textarea id="keywords" rows="6" spellcheck="false" placeholder="pause&#10;appel&#10;exercice"></textarea>
+        </label>
+
+        <section class="speaker-section">
+          <div class="section-title">
+            <h2>Personnes</h2>
+            <small id="speaker-count">0</small>
+          </div>
+          <div id="speaker-list" class="speaker-list">
+            <p class="empty-state">Aucune personne detectee pour le moment.</p>
+          </div>
+        </section>
+
+        <p id="status" role="status"></p>
+      </form>
+    </main>
+
+    <script src="options.js"></script>
+  </body>
+</html>
