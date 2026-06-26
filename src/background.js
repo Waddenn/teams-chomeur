@@ -30,7 +30,7 @@ const PREVIOUS_BROAD_DEFAULT_KEYWORDS = [
 
 chrome.runtime.onInstalled.addListener(async () => {
   const [localSettings, syncedSettings] = await Promise.all([
-    chrome.storage.local.get(["keywords", "enabled", "watchedSpeakers"]),
+    chrome.storage.local.get(["keywords", "enabled"]),
     chrome.storage.sync.get(["keywords", "enabled"])
   ]);
   const storedKeywords = localSettings.keywords ?? syncedSettings.keywords;
@@ -38,8 +38,7 @@ chrome.runtime.onInstalled.addListener(async () => {
 
   await chrome.storage.local.set({
     enabled: localSettings.enabled ?? syncedSettings.enabled ?? true,
-    keywords: shouldUpgradeDefaultKeywords ? DEFAULT_KEYWORDS : storedKeywords ?? DEFAULT_KEYWORDS,
-    watchedSpeakers: localSettings.watchedSpeakers ?? []
+    keywords: shouldUpgradeDefaultKeywords ? DEFAULT_KEYWORDS : storedKeywords ?? DEFAULT_KEYWORDS
   });
 });
 
@@ -68,14 +67,6 @@ chrome.runtime.onMessage.addListener((message, sender) => {
     }, sender);
   }
 
-  if (message?.type === "TEAMS_SPEAKER_HIT") {
-    const speaker = String(message.speaker || "").trim();
-    handleNotification({
-      duplicateType: "speaker",
-      title: `${speaker} parle`,
-      message: String(message.excerpt || "").trim() || `${speaker} vient de parler dans Teams.`
-    }, sender);
-  }
 });
 
 function handleNotification(notification, sender) {

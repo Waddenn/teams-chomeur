@@ -18,11 +18,10 @@ const DEFAULT_KEYWORDS = [
 
 const DEFAULT_SETTINGS = {
   enabled: true,
-  keywords: DEFAULT_KEYWORDS,
-  watchedSpeakers: []
+  keywords: DEFAULT_KEYWORDS
 };
 
-const SETTINGS_KEYS = new Set(["enabled", "keywords", "watchedSpeakers"]);
+const SETTINGS_KEYS = new Set(["enabled", "keywords"]);
 
 const ACTIVE_CAPTION_SELECTORS = [
   "[data-tid='closed-caption-renderer-wrapper']",
@@ -47,9 +46,6 @@ let captionObserver;
 let pollTimer;
 let lastSeenText = "";
 let visibleKeywords = new Set();
-let visibleSpeakers = new Set();
-let lastStoredSpeakersKey = "";
-let storeSpeakersTimer;
 let captionsPreferenceTimer;
 let lastCaptionsStateKey = "";
 let lastCaptionsStateStoredAt = 0;
@@ -76,7 +72,6 @@ async function init() {
 
     lastSeenText = "";
     visibleKeywords.clear();
-    visibleSpeakers.clear();
     scanForKeywords();
   });
 
@@ -86,7 +81,7 @@ async function init() {
 
 async function loadSettings() {
   const [localSettings, syncedSettings] = await Promise.all([
-    chrome.storage.local.get(["enabled", "keywords", "watchedSpeakers"]),
+    chrome.storage.local.get(["enabled", "keywords"]),
     chrome.storage.sync.get(["enabled", "keywords"])
   ]);
   const stored = {
@@ -97,8 +92,7 @@ async function loadSettings() {
   return {
     ...DEFAULT_SETTINGS,
     ...stored,
-    keywords: sanitizeKeywords(stored.keywords ?? DEFAULT_SETTINGS.keywords),
-    watchedSpeakers: sanitizeNames(stored.watchedSpeakers ?? DEFAULT_SETTINGS.watchedSpeakers)
+    keywords: sanitizeKeywords(stored.keywords ?? DEFAULT_SETTINGS.keywords)
   };
 }
 
@@ -206,18 +200,15 @@ function attachCaptionObserver() {
 function scanForKeywords() {
   if (!settings.enabled) {
     visibleKeywords.clear();
-    visibleSpeakers.clear();
     return;
   }
 
   const activeCaptionRoot = getActiveCaptionRoot();
   const captionEntries = activeCaptionRoot ? getRecentCaptionEntries(activeCaptionRoot) : [];
   storeCaptionsState(Boolean(activeCaptionRoot));
-  storeDetectedSpeakers(captionEntries);
   if (!activeCaptionRoot) {
     lastSeenText = "";
     visibleKeywords.clear();
-    visibleSpeakers.clear();
     return;
   }
 
@@ -225,7 +216,6 @@ function scanForKeywords() {
   if (!text) {
     lastSeenText = "";
     visibleKeywords.clear();
-    visibleSpeakers.clear();
     return;
   }
 
@@ -234,7 +224,6 @@ function scanForKeywords() {
   }
 
   lastSeenText = text;
-  scanSpeakerAlerts(captionEntries);
   scanKeywordAlerts(text);
 }
 
@@ -280,32 +269,6 @@ function scanKeywordAlerts(text) {
   visibleKeywords = currentVisibleKeywords;
 }
 
-function scanSpeakerAlerts(captionEntries) {
-  const watchedSpeakers = new Set(sanitizeNames(settings.watchedSpeakers).map(normalizeName));
-  if (watchedSpeakers.size === 0) {
-    visibleSpeakers.clear();
-    return;
-  }
-
-  const currentVisibleSpeakers = new Set();
-  const notifiedSpeakers = new Set();
-
-  for (const entry of captionEntries) {
-    const speakerKey = normalizeName(entry.speaker);
-    if (!speakerKey || !watchedSpeakers.has(speakerKey)) {
-      continue;
-    }
-
-    currentVisibleSpeakers.add(speakerKey);
-    if (!visibleSpeakers.has(speakerKey) && !notifiedSpeakers.has(speakerKey)) {
-      notifySpeaker(entry.speaker, entry.text);
-      notifiedSpeakers.add(speakerKey);
-    }
-  }
-
-  visibleSpeakers = currentVisibleSpeakers;
-}
-
 function getCaptionEntries() {
   const captionRoot = getCaptionRoot();
   if (captionRoot) {
@@ -316,12 +279,12 @@ function getCaptionEntries() {
     const nodes = safeQuerySelectorAll(selector);
     const text = compactText(nodes.map((node) => node.innerText || node.textContent).join(" "));
     if (text.length >= 2) {
-      return [{ speaker: "", text }];
+      return [{ text }];
     }
   }
 
   const fallbackText = getLikelyBottomCaptionText();
-  return fallbackText ? [{ speaker: "", text: fallbackText }] : [];
+  return fallbackText ? [{ text: fallbackText }] : [];
 }
 
 function getRecentCaptionEntries(captionRoot) {
@@ -331,7 +294,6 @@ function getRecentCaptionEntries(captionRoot) {
   if (captionBlocks.length > 0) {
     return captionBlocks
       .map((block) => ({
-        speaker: getCaptionAuthor(block),
         text: getCaptionBlockText(block)
       }))
       .filter((entry) => entry.text);
@@ -345,7 +307,6 @@ function getRecentCaptionEntries(captionRoot) {
   if (textNodes.length > 0) {
     return textNodes
       .map((node) => ({
-        speaker: getCaptionAuthor(node.closest(".fui-ChatMessageCompact") || node.parentElement),
         text: compactText(node.textContent || "")
       }))
       .filter((entry) => entry.text);
@@ -362,14 +323,13 @@ function getRecentCaptionEntries(captionRoot) {
   if (visibleBlocks.length > 0) {
     return visibleBlocks
       .map((node) => ({
-        speaker: getCaptionAuthor(node),
         text: compactText(stripCaptionAuthors(node))
       }))
       .filter((entry) => entry.text);
   }
 
   const text = compactText(captionRoot.innerText || captionRoot.textContent || "").slice(-700);
-  return text ? [{ speaker: "", text }] : [];
+  return text ? [{ text }] : [];
 }
 
 function getVisibleCaptionBlocks(captionRoot, rootRect) {
@@ -381,15 +341,6 @@ function getVisibleCaptionBlocks(captionRoot, rootRect) {
       return text.length >= 2 && isInCaptionViewport(node, rootRect);
     })
     .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
-}
-
-function getCaptionAuthor(node) {
-  if (!node) {
-    return "";
-  }
-
-  const author = node.querySelector?.("[data-tid='author'], .fui-ChatMessageCompact__author");
-  return sanitizeName(author?.textContent || "");
 }
 
 function getCaptionBlockText(node) {
@@ -494,103 +445,6 @@ function notify(word, text) {
   });
 }
 
-function notifySpeaker(speaker, text) {
-  chrome.runtime.sendMessage({
-    type: "TEAMS_SPEAKER_HIT",
-    speaker,
-    excerpt: compactText(text).slice(0, 180)
-  });
-}
-
-function storeDetectedSpeakers(captionEntries) {
-  if (storeSpeakersTimer) {
-    return;
-  }
-
-  storeSpeakersTimer = setTimeout(async () => {
-    storeSpeakersTimer = undefined;
-    const participantNames = detectMeetingParticipantNames();
-    const captionSpeakerNames = captionEntries.map((entry) => entry.speaker);
-    const detectedSpeakers = sanitizeNames(
-      participantNames.length > 0 ? participantNames : captionSpeakerNames
-    )
-      .sort((a, b) => a.localeCompare(b, "fr", { sensitivity: "base" }));
-    const key = detectedSpeakers.map(normalizeName).join("|");
-
-    if (key === lastStoredSpeakersKey) {
-      return;
-    }
-
-    lastStoredSpeakersKey = key;
-    await chrome.storage.local.set({
-      detectedSpeakers,
-      detectedSpeakersUpdatedAt: Date.now()
-    });
-  }, 1000);
-}
-
-function detectMeetingParticipantNames() {
-  const rosterParticipants = Array.from(document.querySelectorAll("[data-tid^='participantsInCall-']"))
-    .map(parseRosterParticipantName)
-    .filter(Boolean);
-
-  if (rosterParticipants.length > 0) {
-    return rosterParticipants;
-  }
-
-  const labelledParticipants = Array.from(document.querySelectorAll("[role='menuitem'][aria-label]"))
-    .filter(isLikelyParticipantTile)
-    .map((node) => parseParticipantName(node.getAttribute("aria-label") || ""))
-    .filter(Boolean);
-
-  if (labelledParticipants.length > 0) {
-    return labelledParticipants;
-  }
-
-  return Array.from(document.querySelectorAll("[data-tid='participant-info-nametag']"))
-    .map((node) => sanitizeName(node.textContent || ""))
-    .filter(Boolean);
-}
-
-function parseRosterParticipantName(node) {
-  const dataTidName = (node.getAttribute("data-tid") || "").replace(/^participantsInCall-/, "");
-  if (dataTidName) {
-    return sanitizeName(dataTidName);
-  }
-
-  return parseParticipantName(node.getAttribute("aria-label") || node.textContent || "");
-}
-
-function isLikelyParticipantTile(node) {
-  const label = node.getAttribute("aria-label") || "";
-  const dataTid = node.getAttribute("data-tid") || "";
-  const text = compactText(node.textContent || "");
-
-  if (!label || /previous page|next page|content shared by/i.test(label)) {
-    return false;
-  }
-
-  return (
-    /context menu|has context menu|muted|video is on|myself video|unverified|external unfamiliar/i.test(label) ||
-    dataTid.includes("@") ||
-    Boolean(text && node.querySelector("[data-tid='participant-info-nametag'], [data-tid='participant-name-decorator-layer']"))
-  );
-}
-
-function parseParticipantName(label) {
-  const clean = compactText(label)
-    .replace(/^Myself video,\s*/i, "")
-    .replace(/^Content shared by\s+/i, "")
-    .replace(/\b(Unverified|External unfamiliar|Muted|Video is on|Context menu is available|Has context menu)\b/gi, "")
-    .replace(/\s*,.*$/g, "");
-
-  if (!clean || /^(previous page|next page|myself video)$/i.test(clean)) {
-    return "";
-  }
-
-  return sanitizeName(clean);
-}
-
 function makeExcerpt(text, word) {
   const clean = compactText(text);
   const index = normalize(clean).indexOf(normalize(word));
@@ -614,28 +468,6 @@ function sanitizeKeywords(keywords) {
   return [...new Set((keywords || [])
     .map((keyword) => String(keyword).trim())
     .filter(Boolean))];
-}
-
-function sanitizeNames(names) {
-  const namesByKey = new Map();
-
-  for (const name of names || []) {
-    const candidate = sanitizeName(name);
-    const candidateKey = normalizeName(candidate);
-    if (candidateKey && !namesByKey.has(candidateKey)) {
-      namesByKey.set(candidateKey, candidate);
-    }
-  }
-
-  return [...namesByKey.values()];
-}
-
-function sanitizeName(name) {
-  return compactText(String(name || "").replace(/\s+/g, " ")).replace(/[,.]$/g, "");
-}
-
-function normalizeName(value) {
-  return normalize(value).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 }
 
 function normalize(value) {
