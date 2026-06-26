@@ -29,6 +29,8 @@ const keywordCount = document.querySelector("#keyword-count");
 const captionsWarning = document.querySelector("#captions-warning");
 let statusTimer;
 let saveTimer;
+let currentCaptionsActive = false;
+let currentCaptionsStateUpdatedAt = 0;
 
 load();
 
@@ -67,7 +69,14 @@ chrome.storage.onChanged.addListener((changes, area) => {
     return;
   }
 
-  load();
+  if (changes.captionsActive) {
+    currentCaptionsActive = Boolean(changes.captionsActive.newValue);
+  }
+  if (changes.captionsStateUpdatedAt) {
+    currentCaptionsStateUpdatedAt = Number(changes.captionsStateUpdatedAt.newValue || 0);
+  }
+
+  renderCaptionsWarning(currentCaptionsActive, currentCaptionsStateUpdatedAt);
 });
 
 async function load() {
@@ -89,7 +98,9 @@ async function load() {
   enabled.checked = Boolean(settings.enabled);
   keywords.value = (settings.keywords || DEFAULT_SETTINGS.keywords).join("\n");
   updateKeywordCount();
-  renderCaptionsWarning(settings.captionsActive, settings.captionsStateUpdatedAt);
+  currentCaptionsActive = Boolean(settings.captionsActive);
+  currentCaptionsStateUpdatedAt = Number(settings.captionsStateUpdatedAt || 0);
+  renderCaptionsWarning(currentCaptionsActive, currentCaptionsStateUpdatedAt);
 }
 
 function parseKeywords(value) {
