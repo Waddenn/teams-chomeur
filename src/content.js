@@ -52,6 +52,7 @@ let lastStoredSpeakersKey = "";
 let storeSpeakersTimer;
 let captionsPreferenceTimer;
 let lastCaptionsStateKey = "";
+let lastCaptionsStateStoredAt = 0;
 
 init();
 
@@ -239,14 +240,16 @@ function scanForKeywords() {
 
 function storeCaptionsState(active) {
   const key = `${active}`;
-  if (key === lastCaptionsStateKey) {
+  const now = Date.now();
+  if (key === lastCaptionsStateKey && now - lastCaptionsStateStoredAt < 2000) {
     return;
   }
 
   lastCaptionsStateKey = key;
+  lastCaptionsStateStoredAt = now;
   chrome.storage.local.set({
     captionsActive: active,
-    captionsStateUpdatedAt: Date.now()
+    captionsStateUpdatedAt: now
   });
 }
 
@@ -527,6 +530,14 @@ function storeDetectedSpeakers(captionEntries) {
 }
 
 function detectMeetingParticipantNames() {
+  const rosterParticipants = Array.from(document.querySelectorAll("[data-tid^='participantsInCall-']"))
+    .map(parseRosterParticipantName)
+    .filter(Boolean);
+
+  if (rosterParticipants.length > 0) {
+    return rosterParticipants;
+  }
+
   const labelledParticipants = Array.from(document.querySelectorAll("[role='menuitem'][aria-label]"))
     .filter(isLikelyParticipantTile)
     .map((node) => parseParticipantName(node.getAttribute("aria-label") || ""))
@@ -539,6 +550,15 @@ function detectMeetingParticipantNames() {
   return Array.from(document.querySelectorAll("[data-tid='participant-info-nametag']"))
     .map((node) => sanitizeName(node.textContent || ""))
     .filter(Boolean);
+}
+
+function parseRosterParticipantName(node) {
+  const dataTidName = (node.getAttribute("data-tid") || "").replace(/^participantsInCall-/, "");
+  if (dataTidName) {
+    return sanitizeName(dataTidName);
+  }
+
+  return parseParticipantName(node.getAttribute("aria-label") || node.textContent || "");
 }
 
 function isLikelyParticipantTile(node) {
